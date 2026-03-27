@@ -8,61 +8,92 @@ services:
       - POSTGRES_DB=finance_db
     volumes:
         - pg-data:/var/lib/postgresql/data
-        - "${PWD}/db-scripts/initialize_db_ddl.sql:/docker-entrypoint-initdb.d/initialize_db_ddl.sql"
+        - "${PWD}/db-scripts/initialize_db_ddl.sql:/docker-entrypoint-initdb.d/01-initialize_db_ddl.sql"
+        - "${PWD}/db-scripts/initialize_conduktor_db.sql:/docker-entrypoint-initdb.d/02-initialize_conduktor_db.sql"
     ports:
       - "5432:5432"
     command: ["postgres", "-c", "wal_level=logical", "-c", "hot_standby=on"]
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+    image: debezium/zookeeper:${DEBEZIUM_VERSION}
     ports:
-      - "2181:2181"
+     - 2181:2181
+     - 2888:2888
+     - 3888:3888
+    volumes:
+      - zk-data:/zookeeper/data:rw
+      - zk-txns:/zookeeper/txns:rw
+      - zk-logs:/zookeeper/logs:rw
 
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    depends_on:
-      - zookeeper
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    image: debezium/kafka:${DEBEZIUM_VERSION}
     ports:
-      - "9092:9092"
+    - 9094:9094
+    links:
+    - zookeeper
+    environment:
+      - "KAFKA_ADVERTISED_HOST_NAME=${KAFKA_ADVERTISED_HOST_NAME}"
+      - "ZOOKEEPER_CONNECT=zookeeper:2181"
+      - "KAFKA_ADVERTISED_LISTENERS=INSIDE://:9092,OUTSIDE://${KAFKA_ADVERTISED_HOST_NAME}:9094"
+      - "KAFKA_LISTENERS=INSIDE://:9092,OUTSIDE://:9094"
+      - "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT"
+      - "KAFKA_INTER_BROKER_LISTENER_NAME=INSIDE"     
+    volumes:
+      - kafka-data:/kafka/data:rw
+      - kafka-logs:/kafka/logs:rw
 
   kafka-connect:
-    image: debezium/connect:2.4
-    depends_on:
-      - kafka
-      - transactions-db
-    environment:
-      BOOTSTRAP_SERVERS: kafka:29092
-      GROUP_ID: 1
-      CONFIG_STORAGE_TOPIC: debezium_connect_configs
-      OFFSET_STORAGE_TOPIC: debezium_connect_offsets
-      STATUS_STORAGE_TOPIC: debezium_connect_statuses
-      CONFIG_STORAGE_REPLICATION_FACTOR: 1
-      OFFSET_STORAGE_REPLICATION_FACTOR: 1
-      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    image: debezium/connect:${DEBEZIUM_VERSION}
     ports:
-      - "8083:8083"
+     - 8083:8083
+    links:
+     - kafka
+    environment:
+     - BOOTSTRAP_SERVERS=kafka:9092
+     - GROUP_ID=1
+     - CONFIG_STORAGE_TOPIC=my_connect_configs
+     - OFFSET_STORAGE_TOPIC=my_connect_offsets
+     - ENABLE_APICURIO_CONVERTERS=true
+     - STATUS_STORAGE_TOPIC=my_connect_statuses
 
   debezium-init:
-    image: curlimages/curl:latest
+    image: python:3.11-alpine
     depends_on:
       - kafka-connect
     volumes:
-      - "${PWD}/debezium/init-connectors.sh:/init-connectors.sh"
+      - "${PWD}/debezium/init-connectors.py:/init-connectors.py"
       - "${PWD}/debezium/connectors:/connectors"
-    entrypoint: ["/bin/sh", "/init-connectors.sh"]
+    environment:
+      CONNECT_URLS: "http://kafka-connect:8083,http://localhost:8083"
+      CONNECTORS_DIR: "/connectors"
+    entrypoint: ["python", "/init-connectors.py"]
     restart: "no"
+
+  conduktor-platform:
+    image: conduktor/conduktor-platform
+    platform: linux/amd64
+    container_name: conduktor-platform-deel
+    depends_on:
+      - kafka
+      - transactions-db
+    ports:
+      - "8087:8080"
+    volumes:  
+      - "./debezium/conduktor.yml:/opt/conduktor/conduktor.yaml"
+    environment:
+      KAFKA_BROKERS: "kafka:29092"
+      CDK_IN_CONF_FILE: /opt/conduktor/conduktor.yaml
+      CDK_DATABASE_HOST: transactions-db
+      CDK_DATABASE_PORT: 5432
+      CDK_DATABASE_NAME: conduktor
+      CDK_DATABASE_USERNAME: conduktor
+      CDK_DATABASE_PASSWORD: conduktor
 
 volumes:
   pg-data:
+  zk-data:
+  zk-txns:
+  zk-logs:
+  kafka-data:
+  kafka-logs:
+
