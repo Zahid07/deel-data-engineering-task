@@ -287,27 +287,30 @@ END; $$;
 
 -- initialize values
 
-call update_customers(5);
-call update_products(30);
-call generate_orders(10);
+CALL update_customers(5);
+CALL update_products(30);
+CALL generate_orders(10);  -- runs after customers and products are seeded
 
 -- Schedule DB Jobs
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
+-- Customers and products run every 2 minutes
 SELECT cron.schedule(
     'update_customers',
     '*/2 * * * *',
-    $$ call update_customers(5); $$
+    $$ CALL update_customers(5); $$
 );
 
 SELECT cron.schedule(
     'update_products',
     '*/2 * * * *',
-    $$ call update_products(10); $$
+    $$ CALL update_products(10); $$
 );
 
+-- Orders run every 2 minutes but offset by 1 minute
+-- so customers and products are always populated first
 SELECT cron.schedule(
     'generate_orders',
-    '*/1 * * * *',
-    $$ call generate_orders(100); $$
+    '1-59/2 * * * *',
+    $$ CALL generate_orders(100); $$
 );

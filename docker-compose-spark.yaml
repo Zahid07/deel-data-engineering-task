@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  spark-consumer:
+    build:
+      context: ./implementation
+      dockerfile: Dockerfile
+    container_name: spark-consumer-implementation
+    environment:
+      # Kafka configuration (use Docker internal network)
+      - KAFKA_HOST=kafka
+      - KAFKA_PORT=9092
+      # Database configuration (use Docker internal network)
+      - DB_HOST=transactions-db
+      - DB_PORT=5432
+      - DB_USER=finance_db_user
+      - DB_PASSWORD=1234
+      - DB_NAME=finance_db
+      # Spark configuration
+      - SPARK_LOCAL_IP=127.0.0.1
+      - SPARK_DRIVER_HOST=spark-consumer
+    volumes:
+      # Mount checkpoints for persistence
+      - spark-checkpoints:/app/checkpoints
+      - spark-temp:/tmp/spark_temp
+    ports:
+      - "4040:4040"  # Spark UI
+      - "4041:4041"  # Alternative port
+    networks:
+      - local
+    restart: unless-stopped
+    # Optional: add resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 4G
+    #     reservations:
+    #       cpus: '1'
+    #       memory: 2G
+
+volumes:
+  spark-checkpoints:
+  spark-temp:
+
+networks:
+  local:
+    external: true
+    name: deel-data-engineering-task_default

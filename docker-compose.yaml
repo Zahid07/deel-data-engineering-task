@@ -6,13 +6,34 @@ services:
       - POSTGRES_USER=finance_db_user
       - POSTGRES_PASSWORD=1234
       - POSTGRES_DB=finance_db
+      - TZ=UTC
+      - PGTZ=UTC
     volumes:
         - pg-data:/var/lib/postgresql/data
-        - "${PWD}/db-scripts/initialize_db_ddl.sql:/docker-entrypoint-initdb.d/01-initialize_db_ddl.sql"
+        - "${PWD}/db-scripts/initialize_db_ddl_new.sql:/docker-entrypoint-initdb.d/01-initialize_db_ddl.sql"
         - "${PWD}/db-scripts/initialize_conduktor_db.sql:/docker-entrypoint-initdb.d/02-initialize_conduktor_db.sql"
+        - "${PWD}/db-scripts/initialize_analytics_ddl.sql:/docker-entrypoint-initdb.d/03-initialize_analytics_ddl.sql"
     ports:
       - "5432:5432"
-    command: ["postgres", "-c", "wal_level=logical", "-c", "hot_standby=on"]
+    command: ["postgres", "-c", "wal_level=logical", "-c", "hot_standby=on", "-c", "timezone=UTC"]
+
+  conduktor-postgres:
+    image: postgres:13
+    platform: linux/amd64
+    container_name: conduktor-postgres
+    environment:
+      POSTGRES_USER: conduktor
+      POSTGRES_PASSWORD: conduktor
+      POSTGRES_DB: conduktor
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conduktor -d conduktor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5433:5432"           # different host port to avoid conflict with transactions-db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   zookeeper:
     image: debezium/zookeeper:${DEBEZIUM_VERSION}
@@ -37,7 +58,7 @@ services:
       - "KAFKA_ADVERTISED_LISTENERS=INSIDE://:9092,OUTSIDE://${KAFKA_ADVERTISED_HOST_NAME}:9094"
       - "KAFKA_LISTENERS=INSIDE://:9092,OUTSIDE://:9094"
       - "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT"
-      - "KAFKA_INTER_BROKER_LISTENER_NAME=INSIDE"     
+      - "KAFKA_INTER_BROKER_LISTENER_NAME=INSIDE"
     volumes:
       - kafka-data:/kafka/data:rw
       - kafka-logs:/kafka/logs:rw
@@ -60,6 +81,7 @@ services:
     image: python:3.11-alpine
     depends_on:
       - kafka-connect
+      - conduktor-platform
     volumes:
       - "${PWD}/debezium/init-connectors.py:/init-connectors.py"
       - "${PWD}/debezium/connectors:/connectors"
@@ -75,15 +97,16 @@ services:
     container_name: conduktor-platform-deel
     depends_on:
       - kafka
+      - conduktor-postgres   # depends on its own postgres now
       - transactions-db
     ports:
       - "8087:8080"
-    volumes:  
+    volumes:
       - "./debezium/conduktor.yml:/opt/conduktor/conduktor.yaml"
     environment:
       KAFKA_BROKERS: "kafka:29092"
       CDK_IN_CONF_FILE: /opt/conduktor/conduktor.yaml
-      CDK_DATABASE_HOST: transactions-db
+      CDK_DATABASE_HOST: conduktor-postgres   # points to dedicated postgres
       CDK_DATABASE_PORT: 5432
       CDK_DATABASE_NAME: conduktor
       CDK_DATABASE_USERNAME: conduktor
@@ -96,4 +119,4 @@ volumes:
   zk-logs:
   kafka-data:
   kafka-logs:
-
+  postgres_data:
