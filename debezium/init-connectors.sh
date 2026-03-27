@@ -2,12 +2,25 @@
 
 CONNECT_URL="http://kafka-connect:8083"
 CONNECTORS_DIR="/connectors"
+MAX_RETRIES=30
+RETRY_COUNT=0
 
 echo "Waiting for Kafka Connect to be ready..."
-until curl -s -o /dev/null -w "%{http_code}" "${CONNECT_URL}/connectors" | grep -q "200"; do
-  echo "Kafka Connect not ready yet, retrying in 5s..."
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${CONNECT_URL}/connectors" 2>/dev/null)
+  if [ "$HTTP_CODE" = "200" ]; then
+    echo "Kafka Connect is ready (HTTP $HTTP_CODE)"
+    break
+  fi
+  echo "Kafka Connect not ready yet (HTTP $HTTP_CODE), retrying in 5s... ($RETRY_COUNT/$MAX_RETRIES)"
+  RETRY_COUNT=$((RETRY_COUNT + 1))
   sleep 5
 done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+  echo "Failed to connect to Kafka Connect after $MAX_RETRIES attempts"
+  exit 1
+fi
 
 echo "Kafka Connect is ready. Registering connectors..."
 
