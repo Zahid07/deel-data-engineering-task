@@ -36,6 +36,7 @@ PRODUCT_SCHEMA = StructType([
 
 STAGING_TABLE = "analytical.dim_product_staging"
 TARGET_TABLE  = "analytical.dim_product"
+HISTORY_TABLE = "analytical.dim_product_history"
 
 
 # -------------------------------------------------------------------
@@ -53,6 +54,50 @@ MERGE_SQL = f"""
         is_active,
         updated_at,
         created_at,
+        created_by,
+        updated_by,
+        _additional_columns,
+        _kafka_offset
+    )
+    SELECT
+        DISTINCT ON (product_id)
+        product_id,
+        COALESCE(product_name, ''),
+        COALESCE(barcode, ''),
+        COALESCE(unity_price, 0.00),
+        COALESCE(is_active, true),
+        updated_at,
+        created_at,
+        created_by,
+        updated_by,
+        _additional_columns,
+        _kafka_offset
+    FROM {STAGING_TABLE}
+    ORDER BY product_id, updated_at DESC NULLS LAST
+    ON CONFLICT (product_id) DO UPDATE SET
+        product_name = COALESCE(EXCLUDED.product_name, ''),
+        barcode      = COALESCE(EXCLUDED.barcode, ''),
+        unity_price  = COALESCE(EXCLUDED.unity_price, 0.00),
+        is_active    = COALESCE(EXCLUDED.is_active, true),
+        updated_at   = EXCLUDED.updated_at,
+        created_by   = EXCLUDED.created_by,
+        updated_by   = EXCLUDED.updated_by,
+        _additional_columns = EXCLUDED._additional_columns,
+        _kafka_offset = EXCLUDED._kafka_offset;
+"""
+
+
+HISTORY_INSERT_SQL = f"""
+    INSERT INTO {HISTORY_TABLE} (
+        product_id,
+        product_name,
+        barcode,
+        unity_price,
+        is_active,
+        updated_at,
+        created_at,
+        created_by,
+        updated_by,
         _additional_columns,
         _kafka_offset
     )
@@ -64,17 +109,11 @@ MERGE_SQL = f"""
         COALESCE(is_active, true),
         updated_at,
         created_at,
+        created_by,
+        updated_by,
         _additional_columns,
         _kafka_offset
-    FROM {STAGING_TABLE}
-    ON CONFLICT (product_id) DO UPDATE SET
-        product_name = COALESCE(EXCLUDED.product_name, ''),
-        barcode      = COALESCE(EXCLUDED.barcode, ''),
-        unity_price  = COALESCE(EXCLUDED.unity_price, 0.00),
-        is_active    = COALESCE(EXCLUDED.is_active, true),
-        updated_at   = EXCLUDED.updated_at,
-        _additional_columns = EXCLUDED._additional_columns,
-        _kafka_offset = EXCLUDED._kafka_offset;
+    FROM {STAGING_TABLE};
 """
 
 
@@ -86,35 +125,42 @@ def process_batch(batch_df: DataFrame, batch_id: int, config: dict):
     logger.info(f"[products] Processing batch {batch_id}.")
 
     # Keep one latest row per product_id so ON CONFLICT updates each target row once.
-    latest_per_product = Window.partitionBy("product_id").orderBy(
-        F.col("updated_at").desc_nulls_last(),
-        F.col("created_at").desc_nulls_last(),
-    )
-    dedup_df = (
-        batch_df
-        .filter(F.col("product_id").isNotNull())
-        .withColumn("_rn", F.row_number().over(latest_per_product))
-        .filter(F.col("_rn") == 1)
-        .drop("_rn")
-    )
-
-    if dedup_df.isEmpty():
+    #latest_per_product = Window.partitionBy("product_id").orderBy(
+    #    F.col("updated_at").desc_nulls_last(),
+    #    F.col("created_at").desc_nulls_last(),
+    #)
+    #dedup_df = (
+    #    batch_df
+    #    .filter(F.col("product_id").isNotNull())
+    #    .withColumn("_rn", F.row_number().over(latest_per_product))
+    #    .filter(F.col("_rn") == 1)
+    #    .drop("_rn")
+    #)
+    dim_df = batch_df.drop("op").coalesce(1)
+    if dim_df.isEmpty():
         logger.info(f"[products] Batch {batch_id} has no valid product rows after dedup, skipping.")
         return
 
     # Coalesce to 1 partition before JDBC write
     # Multiple partitions = multiple concurrent JDBC connections
     # which can cause hangs on local mode
-    dim_df = (
-        dedup_df
-        .drop("op")
-        .dropDuplicates(["product_id"])  # final safety net after window dedup
-        .coalesce(1)
-    )
+    #dim_df = (
+    #    dedup_df
+    #    .drop("op")
+    #    .dropDuplicates(["product_id"])  # final safety net after window dedup
+    #    .coalesce(1)
+    #)
 
     # Debug: print rows and schema to terminal
     # dim_df.show(truncate=False)
     # dim_df.printSchema()
+
+    #dim_df = (
+    #    dedup_df
+    #    .drop("op")
+    #    .dropDuplicates(["product_id"])  # final safety net after window dedup
+    #    .coalesce(1)
+    #)
 
     # Step 1: Write micro-batch to staging
     try:
@@ -146,7 +192,15 @@ def process_batch(batch_df: DataFrame, batch_id: int, config: dict):
         logger.error(f"[products] MERGE failed: {e}")
         raise
 
-    # Step 3: Truncate staging
+    # Step 3: Insert into history table
+    try:
+        logger.info(f"[products] Inserting into history table {HISTORY_TABLE}...")
+        run_merge(config["pg_conn"], HISTORY_INSERT_SQL)
+        logger.info(f"[products] History insert successful.")
+    except Exception as e:
+        logger.error(f"[products] History insert failed: {e}")
+
+    # Step 4: Truncate staging
     try:
         truncate_staging(config["pg_conn"], STAGING_TABLE)
         logger.info(f"[products] Staging truncated.")
