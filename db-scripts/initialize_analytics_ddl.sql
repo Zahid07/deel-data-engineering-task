@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS analytical.dim_customer (
 );
 
 CREATE TABLE IF NOT EXISTS analytical.dim_customer_history (
-    customer_id         BIGINT          PRIMARY KEY,
+    history_id      BIGSERIAL       PRIMARY KEY,
+    customer_id         BIGINT       ,
     customer_name       VARCHAR(255)    NOT NULL,
     is_active           BOOLEAN         NOT NULL DEFAULT true,
     customer_address    VARCHAR(500),
@@ -43,6 +44,22 @@ CREATE TABLE IF NOT EXISTS analytical.dim_product (
     _kafka_offset       BIGINT
 );
 
+
+CREATE TABLE IF NOT EXISTS analytical.dim_product_history (
+    history_id      BIGSERIAL       PRIMARY KEY,
+    product_id          BIGINT          ,
+    product_name        VARCHAR(255)    NOT NULL,
+    barcode             VARCHAR(100),
+    unity_price         DECIMAL(10, 2)  NOT NULL,
+    is_active           BOOLEAN         NOT NULL DEFAULT true,
+    updated_at          TIMESTAMP,
+    created_at          TIMESTAMP,
+    created_by          BIGINT,
+    updated_by          BIGINT,
+    recorded_at     TIMESTAMP       DEFAULT NOW(),
+    _additional_columns TEXT,
+    _kafka_offset       BIGINT
+);
 
 CREATE TABLE IF NOT EXISTS analytical.fact_orders (
     order_id            BIGINT          PRIMARY KEY,
