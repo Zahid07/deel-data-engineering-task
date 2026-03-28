@@ -8,9 +8,26 @@ CREATE TABLE IF NOT EXISTS analytical.dim_customer (
     customer_address    VARCHAR(500),
     updated_at          TIMESTAMP,
     created_at          TIMESTAMP,
+    created_by          BIGINT,
+    updated_by          BIGINT,
     _additional_columns TEXT,
     _kafka_offset       BIGINT
 );
+
+CREATE TABLE IF NOT EXISTS analytical.dim_customer_history (
+    customer_id         BIGINT          PRIMARY KEY,
+    customer_name       VARCHAR(255)    NOT NULL,
+    is_active           BOOLEAN         NOT NULL DEFAULT true,
+    customer_address    VARCHAR(500),
+    updated_at          TIMESTAMP,
+    created_at          TIMESTAMP,
+    created_by          BIGINT,
+    updated_by          BIGINT,
+    recorded_at     TIMESTAMP       DEFAULT NOW(),
+    _additional_columns TEXT,
+    _kafka_offset       BIGINT
+);
+
 
 CREATE TABLE IF NOT EXISTS analytical.dim_product (
     product_id          BIGINT          PRIMARY KEY,
@@ -20,6 +37,8 @@ CREATE TABLE IF NOT EXISTS analytical.dim_product (
     is_active           BOOLEAN         NOT NULL DEFAULT true,
     updated_at          TIMESTAMP,
     created_at          TIMESTAMP,
+    created_by          BIGINT,
+    updated_by          BIGINT,
     _additional_columns TEXT,
     _kafka_offset       BIGINT
 );
