@@ -50,6 +50,8 @@ MERGE_SQL = f"""
         order_status,
         updated_at,
         created_at,
+        created_by,
+        updated_by,
         _additional_columns,
         _kafka_offset
     )
@@ -61,6 +63,8 @@ MERGE_SQL = f"""
         COALESCE(o.status, 'unknown'),  -- denormalized from fact_orders
         s.updated_at,
         s.created_at,
+        s.created_by,
+        s.updated_by,
         s._additional_columns,
         s._kafka_offset
     FROM {STAGING_TABLE} s
@@ -71,6 +75,8 @@ MERGE_SQL = f"""
         quantity     = COALESCE(EXCLUDED.quantity, 0),
         order_status = COALESCE(EXCLUDED.order_status, 'unknown'),
         updated_at   = EXCLUDED.updated_at,
+        created_by   = EXCLUDED.created_by,
+        updated_by   = EXCLUDED.updated_by,
         _additional_columns = EXCLUDED._additional_columns,
         _kafka_offset = EXCLUDED._kafka_offset;
 """
