@@ -7,6 +7,10 @@ Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task spec
 
 ![Database Diagram](./diagrams/database-diagram.png)
 
+## Quick Execution Guide
+
+For the full step-by-step run order (core stack -> Spark -> visualization), see [EXECUTION_README.md](./EXECUTION_README.md).
+
 
 ### Database Configuration
 
