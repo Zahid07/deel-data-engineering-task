@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS analytical.fact_orders (
     status              VARCHAR(50)     NOT NULL,
     updated_at          TIMESTAMP,
     created_at          TIMESTAMP,
+    created_by          BIGINT,
+    updated_by          BIGINT,
     _additional_columns TEXT,
     _kafka_offset       BIGINT
 );
@@ -82,6 +84,8 @@ CREATE TABLE IF NOT EXISTS analytical.fact_orders_history (
     status          VARCHAR(50)     NOT NULL,
     updated_at      TIMESTAMP,  -- when this change was captured
     created_at      TIMESTAMP,
+    created_by          BIGINT,
+    updated_by          BIGINT,
     recorded_at     TIMESTAMP       DEFAULT NOW(),   -- when this change was captured
     _additional_columns TEXT,
     _kafka_offset   BIGINT
@@ -97,7 +101,9 @@ CREATE TABLE IF NOT EXISTS analytical.fact_order_items (
     quantity            INTEGER         NOT NULL,
     order_status        VARCHAR(50)     NOT NULL,   -- denormalized from fact_orders
     updated_at          TIMESTAMP,
-    created_at          TIMESTAMP
+    created_at          TIMESTAMP,
+    created_by          BIGINT,
+    updated_by          BIGINT
 );
 
 
