@@ -16,6 +16,7 @@ services:
     ports:
       - "5432:5432"
     command: ["postgres", "-c", "wal_level=logical", "-c", "hot_standby=on", "-c", "timezone=UTC"]
+    networks: [finance-shared-net]
 
   conduktor-postgres:
     image: postgres:13
@@ -31,9 +32,10 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5433:5432"           # different host port to avoid conflict with transactions-db
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks: [finance-shared-net]
 
   zookeeper:
     image: debezium/zookeeper:${DEBEZIUM_VERSION}
@@ -45,6 +47,7 @@ services:
       - zk-data:/zookeeper/data:rw
       - zk-txns:/zookeeper/txns:rw
       - zk-logs:/zookeeper/logs:rw
+    networks: [finance-shared-net]
 
   kafka:
     image: debezium/kafka:${DEBEZIUM_VERSION}
@@ -62,6 +65,7 @@ services:
     volumes:
       - kafka-data:/kafka/data:rw
       - kafka-logs:/kafka/logs:rw
+    networks: [finance-shared-net]
 
   kafka-connect:
     image: debezium/connect:${DEBEZIUM_VERSION}
@@ -76,6 +80,7 @@ services:
      - OFFSET_STORAGE_TOPIC=my_connect_offsets
      - ENABLE_APICURIO_CONVERTERS=true
      - STATUS_STORAGE_TOPIC=my_connect_statuses
+    networks: [finance-shared-net]
 
   debezium-init:
     image: python:3.11-alpine
@@ -90,6 +95,7 @@ services:
       CONNECTORS_DIR: "/connectors"
     entrypoint: ["python", "/init-connectors.py"]
     restart: "no"
+    networks: [finance-shared-net]
 
   conduktor-platform:
     image: conduktor/conduktor-platform
@@ -97,7 +103,7 @@ services:
     container_name: conduktor-platform-deel
     depends_on:
       - kafka
-      - conduktor-postgres   # depends on its own postgres now
+      - conduktor-postgres
       - transactions-db
     ports:
       - "8087:8080"
@@ -106,11 +112,12 @@ services:
     environment:
       KAFKA_BROKERS: "kafka:29092"
       CDK_IN_CONF_FILE: /opt/conduktor/conduktor.yaml
-      CDK_DATABASE_HOST: conduktor-postgres   # points to dedicated postgres
+      CDK_DATABASE_HOST: conduktor-postgres
       CDK_DATABASE_PORT: 5432
       CDK_DATABASE_NAME: conduktor
       CDK_DATABASE_USERNAME: conduktor
       CDK_DATABASE_PASSWORD: conduktor
+    networks: [finance-shared-net]
 
 volumes:
   pg-data:
@@ -120,3 +127,7 @@ volumes:
   kafka-data:
   kafka-logs:
   postgres_data:
+
+networks:
+  finance-shared-net:
+    name: finance-shared-net
