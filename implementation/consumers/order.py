@@ -50,6 +50,8 @@ MERGE_SQL = f"""
         status,
         updated_at,
         created_at,
+        created_by,
+        updated_by,
         _additional_columns,
         _kafka_offset
     )
@@ -61,6 +63,8 @@ MERGE_SQL = f"""
         COALESCE(status, 'unknown'),
         updated_at,
         created_at,
+        created_by,
+        updated_by,
         _additional_columns,
         _kafka_offset
     FROM {STAGING_TABLE}
@@ -71,6 +75,8 @@ MERGE_SQL = f"""
         delivery_date       = COALESCE(EXCLUDED.delivery_date, CURRENT_DATE),
         status              = COALESCE(EXCLUDED.status, 'unknown'),
         updated_at          = EXCLUDED.updated_at,
+        created_by          = EXCLUDED.created_by,
+        updated_by          = EXCLUDED.updated_by,
         _additional_columns = EXCLUDED._additional_columns,
         _kafka_offset       = EXCLUDED._kafka_offset;
 """
@@ -90,6 +96,8 @@ HISTORY_SQL = f"""
         status,
         updated_at,
         created_at,
+        created_by,
+        updated_by,
         _additional_columns,
         _kafka_offset
     )
@@ -101,6 +109,8 @@ HISTORY_SQL = f"""
         COALESCE(status, 'unknown'),
         updated_at,
         created_at,
+        created_by,
+        updated_by,
         _additional_columns,
         _kafka_offset
     FROM {STAGING_TABLE};
