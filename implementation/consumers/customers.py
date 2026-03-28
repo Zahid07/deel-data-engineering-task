@@ -118,19 +118,19 @@ def process_batch(batch_df: DataFrame, batch_id: int, config: dict):
 	#	.drop("_rn")
 	#)
 
-	dedup_df = batch_df.drop("op").coalesce(1)
+	dim_df = batch_df.drop("op").coalesce(1)
 
-	if dedup_df.isEmpty():
+	if dim_df.isEmpty():
 		logger.info(f"[customers] Batch {batch_id} has no valid customer rows after dedup, skipping.")
 		return
 
 	# dim_df = dedup_df.drop("op").coalesce(1)
-	dim_df = (
-        dedup_df
-        .drop("op")
-        .dropDuplicates(["customer_id"])  # final safety net after window dedup
-        .coalesce(1)
-    )
+	#dim_df = (
+    #    dedup_df
+    #    .drop("op")
+    #    .dropDuplicates(["customer_id"])  # final safety net after window dedup
+    #    .coalesce(1)
+    #)
 
 	try:
 		logger.info(f"[customers] Writing to staging table {STAGING_TABLE}...")
